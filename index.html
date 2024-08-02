@@ -191,7 +191,7 @@
             <div id="upload-progress-bar" class="progress-bar"></div>
             <div id="upload-progress-text" class="progress-text">Upload Progress: 0%</div>
         </div>
-        <div class="progress-container" id="conversion-progress">
+        <div class="progress-container" id="conversion-progress" style="display: none;">
             <div id="conversion-progress-bar" class="progress-bar"></div>
             <div id="conversion-progress-text" class="progress-text">Conversion Progress: 0%</div>
         </div>
@@ -225,13 +225,8 @@
             let totalFiles = files.length;
             let filesLoaded = 0;
 
-            if (totalFiles > 0) {
-                uploadProgressContainer.style.display = 'block';
-                conversionProgressContainer.style.display = 'none';
-            } else {
-                uploadProgressContainer.style.display = 'none';
-                conversionProgressContainer.style.display = 'none';
-            }
+            uploadProgressContainer.style.display = 'block';
+            conversionProgressContainer.style.display = 'none';
 
             for (const file of files) {
                 if (file.type.startsWith('image/')) {
@@ -239,31 +234,112 @@
                     reader.onload = (e) => {
                         const imgContainer = document.createElement('div');
                         imgContainer.classList.add('image-container');
-                        imgContainer.innerHTML = `
-                            <img src="${e.target.result}" alt="${file.name}">
-                            <button class="delete-button" onclick="removeImage('${file.name}')"><i class='bx bx-trash'></i></button>
-                        `;
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        imgContainer.appendChild(img);
+
+                        const deleteButton = document.createElement('button');
+                        deleteButton.innerText = 'X';
+                        deleteButton.classList.add('delete-button');
+                        deleteButton.addEventListener('click', () => {
+                            imgContainer.remove();
+                            imageFiles = imageFiles.filter((f) => f !== file);
+                        });
+
+                        imgContainer.appendChild(deleteButton);
                         previewContainer.appendChild(imgContainer);
+
                         imageFiles.push(file);
+
                         filesLoaded++;
-                        uploadProgressBar.style.width = `${(filesLoaded / totalFiles) * 100}%`;
-                        uploadProgressText.textContent = `Upload Progress: ${Math.round((filesLoaded / totalFiles) * 100)}%`;
-                        if (filesLoaded === totalFiles) {
-                            uploadProgressContainer.style.display = 'none';
-                        }
+                        updateProgress(uploadProgressBar, uploadProgressText, filesLoaded, totalFiles);
                     };
                     reader.readAsDataURL(file);
                 }
             }
         }
 
-        function removeImage(fileName) {
-            imageFiles = imageFiles.filter(file => file.name !== fileName);
-            previewContainer.querySelectorAll('.image-container').forEach(container => {
-                if (container.querySelector('img').alt === fileName) {
-                    container.remove();
-                }
+        function updateProgress(bar, text, current, total) {
+            const percentage = Math.round((current / total) * 100);
+            bar.style.width = `${percentage}%`;
+            text.textContent = `Progress: ${percentage}%`;
+        }
+
+        async function convertToPDF() {
+            if (imageFiles.length === 0) {
+                showAlert('No files selected. Please choose images to convert.');
+                return;
+            }
+
+            uploadProgressContainer.style.display = 'none';
+            conversionProgressContainer.style.display = 'block';
+
+            const { jsPDF } = window.jspdf;
+            const paperSize = paperSizeSelect.value;
+            const pdf = new jsPDF({
+                format: paperSize,
             });
+            const horizontalMargin = parseInt(horizontalMarginInput.value) || 0;
+            const verticalMargin = parseInt(verticalMarginInput.value) || 0;
+
+            let totalImages = imageFiles.length;
+            let imagesProcessed = 0;
+
+            for (const [index, file] of imageFiles.entries()) {
+                const imgData = await getBase64(file);
+                const img = new Image();
+                img.src = imgData;
+
+                await new Promise((resolve) => {
+                    img.onload = () => {
+                        const pageWidth = pdf.internal.pageSize.getWidth();
+                        const pageHeight = pdf.internal.pageSize.getHeight();
+                        const imgAspectRatio = img.width / img.height;
+                        const pageAspectRatio = (pageWidth - 2 * horizontalMargin) / (pageHeight - 2 * verticalMargin);
+
+                        let imgWidth, imgHeight;
+
+                        if (imgAspectRatio > pageAspectRatio) {
+                            imgWidth = pageWidth - 2 * horizontalMargin;
+                            imgHeight = imgWidth / imgAspectRatio;
+                        } else {
+                            imgHeight = pageHeight - 2 * verticalMargin;
+                            imgWidth = imgHeight * imgAspectRatio;
+                        }
+
+                        const x = (pageWidth - imgWidth) / 2;
+                        const y = (pageHeight - imgHeight) / 2;
+
+                        pdf.addImage(img, 'JPEG', x, y, imgWidth, imgHeight);
+                        if (index !== imageFiles.length - 1) {
+                            pdf.addPage();
+                        }
+
+                        imagesProcessed++;
+                        updateProgress(conversionProgressBar, conversionProgressText, imagesProcessed, totalImages);
+                        resolve();
+                    };
+                });
+            }
+
+            pdf.save('converted.pdf');
+        }
+
+        function getBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => reject(error);
+            });
+        }
+
+        function showAlert(message) {
+            alertBox.textContent = message;
+            alertBox.style.display = 'block';
+            setTimeout(() => {
+                alertBox.style.display = 'none';
+            }, 4000);
         }
 
         function toggleSidebar() {
@@ -271,63 +347,6 @@
             const previewContainer = document.getElementById('preview-container');
             sidebar.classList.toggle('hidden');
             previewContainer.classList.toggle('shifted');
-        }
-
-        async function convertToPDF() {
-            if (imageFiles.length === 0) {
-                alertBox.style.display = 'block';
-                setTimeout(() => {
-                    alertBox.style.display = 'none';
-                }, 3000);
-                return;
-            }
-
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const horizontalMargin = parseInt(horizontalMarginInput.value) || 10;
-            const verticalMargin = parseInt(verticalMarginInput.value) || 10;
-            const paperSize = paperSizeSelect.value;
-
-            conversionProgressContainer.style.display = 'block';
-            uploadProgressContainer.style.display = 'none';
-
-            const paperSizes = {
-                a4: { width: 210, height: 297 },
-                letter: { width: 216, height: 279 },
-                legal: { width: 216, height: 356 }
-            };
-
-            let pageWidth = paperSizes[paperSize].width - 2 * horizontalMargin;
-            let pageHeight = paperSizes[paperSize].height - 2 * verticalMargin;
-            let x = horizontalMargin;
-            let y = verticalMargin;
-
-            for (const file of imageFiles) {
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-                await new Promise(resolve => {
-                    img.onload = () => {
-                        if (x + img.width > pageWidth) {
-                            x = horizontalMargin;
-                            y += img.height + verticalMargin;
-                        }
-                        if (y + img.height > pageHeight) {
-                            doc.addPage();
-                            x = horizontalMargin;
-                            y = verticalMargin;
-                        }
-                        doc.addImage(img, 'JPEG', x, y, img.width, img.height);
-                        x += img.width + horizontalMargin;
-
-                        conversionProgressText.textContent = `Conversion Progress: ${Math.round((imageFiles.indexOf(file) + 1) / imageFiles.length * 100)}%`;
-                        conversionProgressBar.style.width = `${(imageFiles.indexOf(file) + 1) / imageFiles.length * 100}%`;
-                        resolve();
-                    };
-                });
-            }
-
-            doc.save('images.pdf');
-            conversionProgressContainer.style.display = 'none';
         }
     </script>
 </body>
