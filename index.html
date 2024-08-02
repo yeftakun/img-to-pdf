@@ -170,6 +170,11 @@
                 width: calc(25% - 20px); /* 4 columns */
             }
         }
+        #sidebar .info {
+            font-size: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -187,6 +192,7 @@
             <option value="letter">Letter</option>
             <option value="legal">Legal</option>
         </select>
+        <p class="info"><i class='bx bx-info-circle'></i> Pages will be sorted in ascending order according to the file name.</p>
         <button class="convert-button" onclick="convertToPDF()">Convert to PDF</button>
         <div class="progress-container" id="upload-progress">
             <div id="upload-progress-bar" class="progress-bar"></div>
