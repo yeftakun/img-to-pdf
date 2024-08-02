@@ -220,7 +220,7 @@
         imageInput.addEventListener('change', handleFiles);
 
         function handleFiles(event) {
-            const files = event.target.files;
+            const files = Array.from(event.target.files);
             previewContainer.innerHTML = '';
             imageFiles = [];
             let totalFiles = files.length;
@@ -229,7 +229,7 @@
             uploadProgressContainer.style.display = 'block';
             conversionProgressContainer.style.display = 'none';
 
-            for (const file of files) {
+            files.forEach(file => {
                 if (file.type.startsWith('image/')) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
@@ -250,14 +250,14 @@
                         imgContainer.appendChild(deleteButton);
                         previewContainer.appendChild(imgContainer);
 
-                        imageFiles.push(file);
+                        imageFiles.push({ file, name: file.name });
 
                         filesLoaded++;
                         updateProgress(uploadProgressBar, uploadProgressText, filesLoaded, totalFiles);
                     };
                     reader.readAsDataURL(file);
                 }
-            }
+            });
         }
 
         function updateProgress(bar, text, current, total) {
@@ -275,6 +275,9 @@
             uploadProgressContainer.style.display = 'none';
             conversionProgressContainer.style.display = 'block';
 
+            // Sort images by filename
+            imageFiles.sort((a, b) => a.name.localeCompare(b.name));
+
             const { jsPDF } = window.jspdf;
             const paperSize = paperSizeSelect.value;
             const pdf = new jsPDF({
@@ -286,8 +289,8 @@
             let totalImages = imageFiles.length;
             let imagesProcessed = 0;
 
-            for (const [index, file] of imageFiles.entries()) {
-                const imgData = await getBase64(file);
+            for (const [index, imgFile] of imageFiles.entries()) {
+                const imgData = await getBase64(imgFile.file);
                 const img = new Image();
                 img.src = imgData;
 
